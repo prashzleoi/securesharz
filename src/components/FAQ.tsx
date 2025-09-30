@@ -66,11 +66,12 @@ const FAQ = () => {
 
           <div className="mt-12 text-center">
             <p className="text-muted-foreground mb-4">Still have questions?</p>
-            <Button variant="outline" size="lg" asChild>
-              <a href="mailto:peacefulboy2005@gmail.com">
-                Contact Support
-              </a>
-            </Button>
+            <a 
+              href="mailto:peacefulboy2005@gmail.com"
+              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-base font-semibold h-14 px-8 border-2 border-border bg-transparent hover:bg-muted transition-all"
+            >
+              Contact Support
+            </a>
           </div>
         </div>
       </div>
