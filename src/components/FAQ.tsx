@@ -66,8 +66,10 @@ const FAQ = () => {
 
           <div className="mt-12 text-center">
             <p className="text-muted-foreground mb-4">Still have questions?</p>
-            <Button variant="outline" size="lg">
-              Contact Support
+            <Button variant="outline" size="lg" asChild>
+              <a href="mailto:peacefulboy2005@gmail.com">
+                Contact Support
+              </a>
             </Button>
           </div>
         </div>
