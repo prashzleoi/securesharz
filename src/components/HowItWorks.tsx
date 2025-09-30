@@ -23,7 +23,7 @@ const HowItWorks = () => {
     {
       icon: Shield,
       title: "Protect",
-      description: "We only use your IP for authentication—no bank details, card info, photos, or personal data. Your privacy is fully protected.",
+      description: "We only use your URN (Unique Reference Number) for authentication—no bank details, card info, photos, or personal data. Your privacy is our priority.",
       color: "from-mint to-mint/80",
     },
   ];
