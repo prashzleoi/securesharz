@@ -4,7 +4,7 @@ import heroImage from "@/assets/hero-secure-share.jpg";
 
 const Hero = () => {
   return (
-    <section className="relative overflow-hidden pt-20 pb-16 md:pt-28 md:pb-24">
+    <section className="relative overflow-hidden pt-32 pb-16 md:pt-40 md:pb-24">
       <div className="container mx-auto px-4">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           {/* Left Content */}
