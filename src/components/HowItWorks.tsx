@@ -1,4 +1,4 @@
-import { MousePointerClick, Sparkles, Link2 } from "lucide-react";
+import { MousePointerClick, Sparkles, Link2, Shield } from "lucide-react";
 
 const HowItWorks = () => {
   const steps = [
@@ -20,6 +20,12 @@ const HowItWorks = () => {
       description: "We encrypt content in your browser and upload ciphertext. You get a secret link.",
       color: "from-secondary to-secondary/80",
     },
+    {
+      icon: Shield,
+      title: "Protect",
+      description: "We only use your IP for authentication—no bank details, card info, photos, or personal data. Your privacy is fully protected.",
+      color: "from-mint to-mint/80",
+    },
   ];
 
   return (
@@ -30,11 +36,11 @@ const HowItWorks = () => {
             How it works
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Three simple steps to secure sharing
+            Four simple steps to secure sharing
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+        <div className="grid md:grid-cols-4 gap-8 max-w-6xl mx-auto">
           {steps.map((step, idx) => {
             const Icon = step.icon;
             return (
