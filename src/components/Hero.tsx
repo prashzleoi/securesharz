@@ -1,8 +1,11 @@
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Lock, Globe, ExternalLink } from "lucide-react";
 import heroImage from "@/assets/hero-secure-share.jpg";
 
 const Hero = () => {
+  const navigate = useNavigate();
+
   return (
     <section className="relative overflow-hidden pt-32 pb-16 md:pt-40 md:pb-24">
       <div className="container mx-auto px-4">
@@ -26,11 +29,11 @@ const Hero = () => {
             </p>
             
             <div className="flex flex-wrap gap-4">
-              <Button variant="hero" size="lg" className="group">
+              <Button variant="hero" size="lg" className="group" onClick={() => navigate("/auth")}>
                 <Globe className="group-hover:scale-110 transition-transform" />
                 Use SecureShare Online
               </Button>
-              <Button variant="outline" size="lg">
+              <Button variant="outline" size="lg" onClick={() => navigate("/auth")}>
                 <ExternalLink className="w-4 h-4" />
                 Try Demo
               </Button>
