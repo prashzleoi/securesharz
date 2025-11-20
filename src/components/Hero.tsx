@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Lock, Download, ExternalLink } from "lucide-react";
+import { Lock, Globe, ExternalLink } from "lucide-react";
 import heroImage from "@/assets/hero-secure-share.jpg";
 
 const Hero = () => {
@@ -27,8 +27,8 @@ const Hero = () => {
             
             <div className="flex flex-wrap gap-4">
               <Button variant="hero" size="lg" className="group">
-                <Download className="group-hover:scale-110 transition-transform" />
-                Get the Extension
+                <Globe className="group-hover:scale-110 transition-transform" />
+                Use SecureShare Online
               </Button>
               <Button variant="outline" size="lg">
                 <ExternalLink className="w-4 h-4" />
