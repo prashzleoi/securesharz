@@ -40,40 +40,99 @@ export type Database = {
       }
       shared_pages: {
         Row: {
+          access_count: number
+          content_type: string | null
           created_at: string
+          custom_slug: string | null
+          deleted_at: string | null
           encrypted_content: string
           encryption_metadata: Json | null
           expires_at: string | null
+          file_path: string | null
           id: string
+          max_access_count: number | null
           original_url: string
+          password_hash: string | null
           share_token: string
           title: string
+          urn_id: string | null
           user_id: string
           view_count: number
         }
         Insert: {
+          access_count?: number
+          content_type?: string | null
           created_at?: string
+          custom_slug?: string | null
+          deleted_at?: string | null
           encrypted_content: string
           encryption_metadata?: Json | null
           expires_at?: string | null
+          file_path?: string | null
           id?: string
+          max_access_count?: number | null
           original_url: string
+          password_hash?: string | null
           share_token: string
           title: string
+          urn_id?: string | null
           user_id: string
           view_count?: number
         }
         Update: {
+          access_count?: number
+          content_type?: string | null
           created_at?: string
+          custom_slug?: string | null
+          deleted_at?: string | null
           encrypted_content?: string
           encryption_metadata?: Json | null
           expires_at?: string | null
+          file_path?: string | null
           id?: string
+          max_access_count?: number | null
           original_url?: string
+          password_hash?: string | null
           share_token?: string
           title?: string
+          urn_id?: string | null
           user_id?: string
           view_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shared_pages_urn_id_fkey"
+            columns: ["urn_id"]
+            isOneToOne: false
+            referencedRelation: "urns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      urns: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          is_anonymous: boolean
+          last_seen_at: string
+          urn: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_anonymous?: boolean
+          last_seen_at?: string
+          urn: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_anonymous?: boolean
+          last_seen_at?: string
+          urn?: string
         }
         Relationships: []
       }
@@ -82,7 +141,9 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      cleanup_expired_shares: { Args: never; Returns: undefined }
+      update_urn_last_seen: { Args: { urn_value: string }; Returns: undefined }
+      validate_url: { Args: { url_input: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never

@@ -18,24 +18,24 @@ const Hero = () => {
             </div>
             
             <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight">
-              Share web pages —{" "}
+              Share files & links —{" "}
               <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                privately, instantly.
+                privately, securely, anonymously.
               </span>
             </h1>
             
             <p className="text-xl text-muted-foreground max-w-xl leading-relaxed">
-              Scrape. Sanitize. Encrypt — all in your browser. Only people with the secret link can read your content.
+              Upload files or share URLs with end-to-end encryption. Password-protected, auto-expiring links. No login required.
             </p>
             
             <div className="flex flex-wrap gap-4">
-              <Button variant="hero" size="lg" className="group" onClick={() => navigate("/auth")}>
+              <Button variant="hero" size="lg" className="group" onClick={() => navigate("/share")}>
                 <Globe className="group-hover:scale-110 transition-transform" />
-                Use SecureShare Online
+                Start Sharing Securely
               </Button>
-              <Button variant="outline" size="lg" onClick={() => navigate("/auth")}>
+              <Button variant="outline" size="lg" onClick={() => navigate("/share")}>
                 <ExternalLink className="w-4 h-4" />
-                Try Demo
+                Try Now
               </Button>
             </div>
 

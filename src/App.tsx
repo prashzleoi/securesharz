@@ -6,6 +6,9 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
+import Share from "./pages/Share";
+import ViewShare from "./pages/ViewShare";
+import History from "./pages/History";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -20,6 +23,9 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/share" element={<Share />} />
+          <Route path="/s/:identifier" element={<ViewShare />} />
+          <Route path="/history" element={<History />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
