@@ -6,6 +6,40 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const encoder = new TextEncoder();
+
+const toBase64 = (bytes: Uint8Array) =>
+  btoa(String.fromCharCode(...bytes));
+
+const fromBase64 = (b64: string) =>
+  Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+
+async function deriveAesKey(password: string, salt: ArrayBuffer): Promise<CryptoKey> {
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  );
+
+  return crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt,
+      iterations: 100000,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    {
+      name: 'AES-GCM',
+      length: 256,
+    },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
 interface CreateShareRequest {
   urn: string;
   content?: string; // URL content
@@ -76,8 +110,7 @@ serve(async (req: Request) => {
       );
     }
 
-    // Hash password using Web Crypto API
-    const encoder = new TextEncoder();
+    // Hash password using Web Crypto API (for quick verification)
     const passwordData = encoder.encode(password);
     const hashBuffer = await crypto.subtle.digest('SHA-256', passwordData);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
@@ -90,12 +123,12 @@ serve(async (req: Request) => {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
-    // Generate encryption key
-    const keyBytes = new Uint8Array(32);
-    crypto.getRandomValues(keyBytes);
-    const encryptionKey = Array.from(keyBytes)
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
+    // Derive AES-256-GCM key from password using PBKDF2 (no key stored in DB)
+    const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+    const aesKey = await deriveAesKey(password, saltBytes.buffer);
+
+    // Single IV per share (URL or file). Unique per share so safe for one-time use.
+    const iv = crypto.getRandomValues(new Uint8Array(12));
 
     let encryptedContent = '';
     let filePath: string | null = null;
@@ -115,34 +148,32 @@ serve(async (req: Request) => {
 
       originalUrl = content;
       
-      // Simple XOR encryption for URL (in production, use proper encryption)
-      const contentEncoder = new TextEncoder();
-      const contentBytes = contentEncoder.encode(content);
-      const keyBytesArray = new TextEncoder().encode(encryptionKey);
-      const encrypted = new Uint8Array(contentBytes.length);
-      
-      for (let i = 0; i < contentBytes.length; i++) {
-        encrypted[i] = contentBytes[i] ^ keyBytesArray[i % keyBytesArray.length];
-      }
-      
-      encryptedContent = btoa(String.fromCharCode(...encrypted));
+      // AES-256-GCM encryption for URL content
+      const contentBytes = encoder.encode(content);
+      const encryptedBuffer = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        aesKey,
+        contentBytes
+      );
+      const encryptedBytes = new Uint8Array(encryptedBuffer);
+      encryptedContent = toBase64(encryptedBytes);
     } else if (file) {
       // Handle file upload
-      const fileData = Uint8Array.from(atob(file.data), c => c.charCodeAt(0));
+      const fileData = fromBase64(file.data);
       
-      // Encrypt file data
-      const keyBytesArray = new TextEncoder().encode(encryptionKey);
-      const encrypted = new Uint8Array(fileData.length);
-      
-      for (let i = 0; i < fileData.length; i++) {
-        encrypted[i] = fileData[i] ^ keyBytesArray[i % keyBytesArray.length];
-      }
+      // AES-256-GCM encryption for file data
+      const encryptedBuffer = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        aesKey,
+        fileData
+      );
+      const encryptedFileBytes = new Uint8Array(encryptedBuffer);
 
       // Upload to storage
       const fileName = `${shareToken}/${file.name}`;
       const { error: uploadError } = await supabase.storage
         .from('shared-content')
-        .upload(fileName, encrypted, {
+        .upload(fileName, encryptedFileBytes, {
           contentType: file.type,
           upsert: false,
         });
@@ -184,8 +215,11 @@ serve(async (req: Request) => {
         expires_at: expiresAt,
         max_access_count: maxAccessCount || null,
         encryption_metadata: {
-          algorithm: 'XOR',
-          key: encryptionKey,
+          algorithm: 'AES-256-GCM',
+          kdf: 'PBKDF2',
+          iterations: 100000,
+          salt: toBase64(salt),
+          iv: toBase64(iv),
         },
       })
       .select()
@@ -202,9 +236,10 @@ serve(async (req: Request) => {
     console.log('Share created successfully:', shareData.id);
 
     // Generate share link
+    const origin = req.headers.get('origin') || '';
     const shareLink = customSlug
-      ? `${req.headers.get('origin')}/s/${customSlug}`
-      : `${req.headers.get('origin')}/s/${shareToken}`;
+      ? `${origin}/s/${customSlug}`
+      : `${origin}/s/${shareToken}`;
 
     return new Response(
       JSON.stringify({
