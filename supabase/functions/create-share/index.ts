@@ -218,7 +218,7 @@ serve(async (req: Request) => {
           algorithm: 'AES-256-GCM',
           kdf: 'PBKDF2',
           iterations: 100000,
-          salt: toBase64(salt),
+          salt: toBase64(saltBytes),
           iv: toBase64(iv),
         },
       })

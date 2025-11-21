@@ -32,7 +32,18 @@ const ViewShare = () => {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error response from get-share:', error);
+        // Extract detailed error message from edge function response
+        const errorMessage = error.message || "Failed to unlock content";
+        toast.error(errorMessage);
+        return;
+      }
+
+      if (!data) {
+        toast.error("No data returned from server");
+        return;
+      }
 
       setShareData(data);
       setUnlocked(true);
