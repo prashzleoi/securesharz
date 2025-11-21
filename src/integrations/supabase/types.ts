@@ -141,6 +141,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_expired_share_files: { Args: never; Returns: undefined }
       cleanup_expired_shares: { Args: never; Returns: undefined }
       update_urn_last_seen: { Args: { urn_value: string }; Returns: undefined }
       validate_url: { Args: { url_input: string }; Returns: boolean }
