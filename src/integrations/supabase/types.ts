@@ -38,6 +38,30 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_limits: {
+        Row: {
+          attempts: number | null
+          created_at: string
+          id: string
+          key: string
+          window_start: string
+        }
+        Insert: {
+          attempts?: number | null
+          created_at?: string
+          id?: string
+          key: string
+          window_start?: string
+        }
+        Update: {
+          attempts?: number | null
+          created_at?: string
+          id?: string
+          key?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       shared_pages: {
         Row: {
           access_count: number
@@ -141,8 +165,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_rate_limit: {
+        Args: { max_attempts: number; rate_key: string; window_minutes: number }
+        Returns: boolean
+      }
       cleanup_expired_share_files: { Args: never; Returns: undefined }
       cleanup_expired_shares: { Args: never; Returns: undefined }
+      cleanup_rate_limits: { Args: never; Returns: undefined }
       update_urn_last_seen: { Args: { urn_value: string }; Returns: undefined }
       validate_url: { Args: { url_input: string }; Returns: boolean }
     }

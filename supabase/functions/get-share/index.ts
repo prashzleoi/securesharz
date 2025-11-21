@@ -11,8 +11,20 @@ const encoder = new TextEncoder();
 const fromBase64 = (b64: string) =>
   Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 
+// Constant-time string comparison to prevent timing attacks
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
 interface GetShareRequest {
-  identifier: string; // token or custom slug
+  identifier: string;
   password: string;
 }
 
@@ -29,34 +41,36 @@ serve(async (req: Request) => {
 
     const { identifier, password }: GetShareRequest = await req.json();
 
-    // Rate limiting: 10 attempts per 15 minutes per identifier
-    const rateLimitKey = `ratelimit:get-share:${identifier}`;
-    const kv = await Deno.openKv();
-    const rateLimitEntry = await kv.get<{ count: number; resetAt: number }>([rateLimitKey]);
-    const now = Date.now();
-    
-    if (rateLimitEntry.value) {
-      if (now < rateLimitEntry.value.resetAt) {
-        if (rateLimitEntry.value.count >= 10) {
-          return new Response(
-            JSON.stringify({ error: 'Too many attempts. Please try again in 15 minutes.' }),
-            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-        await kv.set([rateLimitKey], { count: rateLimitEntry.value.count + 1, resetAt: rateLimitEntry.value.resetAt }, { expireIn: 15 * 60 * 1000 });
-      } else {
-        await kv.set([rateLimitKey], { count: 1, resetAt: now + 15 * 60 * 1000 }, { expireIn: 15 * 60 * 1000 });
-      }
-    } else {
-      await kv.set([rateLimitKey], { count: 1, resetAt: now + 15 * 60 * 1000 }, { expireIn: 15 * 60 * 1000 });
+    if (!identifier) {
+      return new Response(
+        JSON.stringify({ error: 'Identifier is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // Find share by token or custom slug - using separate queries to prevent SQL injection
-    let shareData = null;
-    let shareError = null;
+    // Database-based rate limiting: 10 attempts per 15 minutes
+    const rateLimitKey = `get_share:${identifier}`;
+    const { data: rateLimitAllowed, error: rateLimitError } = await supabase.rpc(
+      'check_rate_limit',
+      { 
+        rate_key: rateLimitKey, 
+        max_attempts: 10, 
+        window_minutes: 15 
+      }
+    );
 
-    // Try finding by share_token first
-    const { data: shareByToken, error: errorByToken } = await supabase
+    if (rateLimitError || rateLimitAllowed === false) {
+      console.log('Rate limit exceeded for:', identifier);
+      return new Response(
+        JSON.stringify({ error: 'Too many attempts. Please try again in 15 minutes.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Find share by token or custom slug using separate parameterized queries
+    let shareData = null;
+
+    const { data: shareByToken } = await supabase
       .from('shared_pages')
       .select('*')
       .eq('share_token', identifier)
@@ -66,8 +80,7 @@ serve(async (req: Request) => {
     if (shareByToken) {
       shareData = shareByToken;
     } else {
-      // Try finding by custom_slug
-      const { data: shareBySlug, error: errorBySlug } = await supabase
+      const { data: shareBySlug } = await supabase
         .from('shared_pages')
         .select('*')
         .eq('custom_slug', identifier)
@@ -75,10 +88,9 @@ serve(async (req: Request) => {
         .maybeSingle();
       
       shareData = shareBySlug;
-      shareError = errorBySlug;
     }
 
-    if (shareError || !shareData) {
+    if (!shareData) {
       return new Response(
         JSON.stringify({ error: 'Share not found or has been deleted' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -101,13 +113,13 @@ serve(async (req: Request) => {
       );
     }
 
-    // Verify password
+    // Verify password with constant-time comparison
     const passwordData = encoder.encode(password);
     const hashBuffer = await crypto.subtle.digest('SHA-256', passwordData);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-    if (passwordHash !== shareData.password_hash) {
+    if (!timingSafeEqual(passwordHash, shareData.password_hash)) {
       return new Response(
         JSON.stringify({ error: 'Incorrect password' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -120,123 +132,81 @@ serve(async (req: Request) => {
       .update({ access_count: shareData.access_count + 1 })
       .eq('id', shareData.id);
 
-    // Decrypt content
+    // Decrypt content using AES-256-GCM ONLY
     const encryptionMetadata = shareData.encryption_metadata as any;
-    const algorithm = encryptionMetadata?.algorithm || 'XOR';
+    
+    // Reject shares without proper AES-256-GCM encryption
+    if (!encryptionMetadata || encryptionMetadata.algorithm !== 'AES-256-GCM') {
+      return new Response(
+        JSON.stringify({ error: 'This share uses an outdated encryption method and can no longer be accessed. Please create a new share with current security standards.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     let decryptedContent: string | null = null;
     let fileData: string | null = null;
 
-    if (algorithm === 'AES-256-GCM') {
-      const saltBytes = fromBase64(encryptionMetadata.salt);
-      const ivBytes = fromBase64(encryptionMetadata.iv);
+    const saltBytes = fromBase64(encryptionMetadata.salt);
+    const ivBytes = fromBase64(encryptionMetadata.iv);
 
-      const keyMaterial = await crypto.subtle.importKey(
-        'raw',
-        encoder.encode(password),
-        'PBKDF2',
-        false,
-        ['deriveKey']
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(password),
+      'PBKDF2',
+      false,
+      ['deriveKey']
+    );
+
+    const aesKey = await crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: saltBytes,
+        iterations: encryptionMetadata.iterations || 100000,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      {
+        name: 'AES-GCM',
+        length: 256,
+      },
+      false,
+      ['decrypt']
+    );
+
+    if (shareData.encrypted_content) {
+      const encryptedBytes = fromBase64(shareData.encrypted_content);
+      const decryptedBuffer = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: ivBytes },
+        aesKey,
+        encryptedBytes
       );
+      const decryptedBytes = new Uint8Array(decryptedBuffer);
+      const decoder = new TextDecoder();
+      decryptedContent = decoder.decode(decryptedBytes);
+    } else if (shareData.file_path) {
+      // Download and decrypt file
+      const { data: fileDataEncrypted, error: downloadError } = await supabase.storage
+        .from('shared-content')
+        .download(shareData.file_path);
 
-      const aesKey = await crypto.subtle.deriveKey(
-        {
-          name: 'PBKDF2',
-          salt: saltBytes,
-          iterations: encryptionMetadata.iterations || 100000,
-          hash: 'SHA-256',
-        },
-        keyMaterial,
-        {
-          name: 'AES-GCM',
-          length: 256,
-        },
-        false,
-        ['decrypt']
-      );
-
-      if (shareData.encrypted_content) {
-        const encryptedBytes = fromBase64(shareData.encrypted_content);
-        const decryptedBuffer = await crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv: ivBytes },
-          aesKey,
-          encryptedBytes
-        );
-        const decryptedBytes = new Uint8Array(decryptedBuffer);
-        const decoder = new TextDecoder();
-        decryptedContent = decoder.decode(decryptedBytes);
-      } else if (shareData.file_path) {
-        // Download and decrypt file
-        const { data: fileDataEncrypted, error: downloadError } = await supabase.storage
-          .from('shared-content')
-          .download(shareData.file_path);
-
-        if (downloadError || !fileDataEncrypted) {
-          console.error('Download error:', downloadError);
-          return new Response(
-            JSON.stringify({ error: 'Failed to retrieve file' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        const encryptedBytes = new Uint8Array(await fileDataEncrypted.arrayBuffer());
-        const decryptedBuffer = await crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv: ivBytes },
-          aesKey,
-          encryptedBytes
-        );
-        const decryptedBytes = new Uint8Array(decryptedBuffer);
-
-        // Convert to base64 for client download
-        fileData = btoa(String.fromCharCode(...decryptedBytes));
-      }
-    } else {
-      // Legacy XOR decryption for existing shares
-      const encryptionKey = encryptionMetadata?.key;
-      if (!encryptionKey) {
+      if (downloadError || !fileDataEncrypted) {
+        console.error('Download error:', downloadError);
         return new Response(
-          JSON.stringify({ error: 'Encryption key not found' }),
+          JSON.stringify({ error: 'Failed to retrieve file' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      if (shareData.encrypted_content) {
-        // Decrypt URL
-        const encryptedBytes = Uint8Array.from(atob(shareData.encrypted_content), c => c.charCodeAt(0));
-        const keyBytes = new TextEncoder().encode(encryptionKey);
-        const decrypted = new Uint8Array(encryptedBytes.length);
-        
-        for (let i = 0; i < encryptedBytes.length; i++) {
-          decrypted[i] = encryptedBytes[i] ^ keyBytes[i % keyBytes.length];
-        }
-        
-        const decoder = new TextDecoder();
-        decryptedContent = decoder.decode(decrypted);
-      } else if (shareData.file_path) {
-        // Download and decrypt file
-        const { data: fileDataEncrypted, error: downloadError } = await supabase.storage
-          .from('shared-content')
-          .download(shareData.file_path);
+      const encryptedBytes = new Uint8Array(await fileDataEncrypted.arrayBuffer());
+      const decryptedBuffer = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: ivBytes },
+        aesKey,
+        encryptedBytes
+      );
+      const decryptedBytes = new Uint8Array(decryptedBuffer);
 
-        if (downloadError || !fileDataEncrypted) {
-          console.error('Download error:', downloadError);
-          return new Response(
-            JSON.stringify({ error: 'Failed to retrieve file' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        const encryptedBytes = new Uint8Array(await fileDataEncrypted.arrayBuffer());
-        const keyBytes = new TextEncoder().encode(encryptionKey);
-        const decrypted = new Uint8Array(encryptedBytes.length);
-        
-        for (let i = 0; i < encryptedBytes.length; i++) {
-          decrypted[i] = encryptedBytes[i] ^ keyBytes[i % keyBytes.length];
-        }
-
-        // Convert to base64
-        fileData = btoa(String.fromCharCode(...decrypted));
-      }
+      // Convert to base64 for client download
+      fileData = btoa(String.fromCharCode(...decryptedBytes));
     }
 
     console.log('Share accessed successfully:', shareData.id);

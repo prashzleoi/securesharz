@@ -42,9 +42,9 @@ async function deriveAesKey(password: string, salt: ArrayBuffer): Promise<Crypto
 
 interface CreateShareRequest {
   urn: string;
-  content?: string; // URL content
+  content?: string;
   file?: {
-    data: string; // base64
+    data: string;
     name: string;
     type: string;
   };
@@ -77,35 +77,29 @@ serve(async (req: Request) => {
       title,
     }: CreateShareRequest = await req.json();
 
-    // Rate limiting: 20 shares per hour per URN
-    const rateLimitKey = `ratelimit:create-share:${urn}`;
-    const kv = await Deno.openKv();
-    const rateLimitEntry = await kv.get<{ count: number; resetAt: number }>([rateLimitKey]);
-    const now = Date.now();
-    
-    if (rateLimitEntry.value) {
-      if (now < rateLimitEntry.value.resetAt) {
-        if (rateLimitEntry.value.count >= 20) {
-          return new Response(
-            JSON.stringify({ error: 'Too many shares created. Please try again in an hour.' }),
-            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-        await kv.set([rateLimitKey], { count: rateLimitEntry.value.count + 1, resetAt: rateLimitEntry.value.resetAt }, { expireIn: 60 * 60 * 1000 });
-      } else {
-        await kv.set([rateLimitKey], { count: 1, resetAt: now + 60 * 60 * 1000 }, { expireIn: 60 * 60 * 1000 });
+    // Database-based rate limiting: 20 shares per hour per URN
+    const rateLimitKey = `create_share:${urn}`;
+    const { data: rateLimitAllowed, error: rateLimitError } = await supabase.rpc(
+      'check_rate_limit',
+      { 
+        rate_key: rateLimitKey, 
+        max_attempts: 20, 
+        window_minutes: 60 
       }
-    } else {
-      await kv.set([rateLimitKey], { count: 1, resetAt: now + 60 * 60 * 1000 }, { expireIn: 60 * 60 * 1000 });
+    );
+
+    if (rateLimitError || rateLimitAllowed === false) {
+      console.log('Rate limit exceeded for URN:', urn);
+      return new Response(
+        JSON.stringify({ error: 'Rate limit exceeded. Maximum 20 shares per hour.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // Validate file size early (before processing) to prevent memory issues
-    // Edge functions have ~150MB memory limit
-    // Base64 adds ~33% overhead, encryption adds more
-    // Safe limit: 40MB (will be ~53MB as base64, ~65MB during processing)
+    // Validate file size (40MB max to prevent memory issues)
     if (file?.data) {
-      const base64Size = file.data.length * 0.75; // Approximate decoded size
-      const maxSize = 40 * 1024 * 1024; // 40MB
+      const base64Size = file.data.length * 0.75;
+      const maxSize = 40 * 1024 * 1024;
       if (base64Size > maxSize) {
         return new Response(
           JSON.stringify({ error: `File too large. Maximum size is 40MB. Your file is ${Math.round(base64Size / 1024 / 1024)}MB` }),
@@ -147,7 +141,7 @@ serve(async (req: Request) => {
       );
     }
 
-    // Hash password using Web Crypto API (for quick verification)
+    // Hash password for verification (SHA-256 for quick check)
     const passwordData = encoder.encode(password);
     const hashBuffer = await crypto.subtle.digest('SHA-256', passwordData);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
@@ -164,7 +158,7 @@ serve(async (req: Request) => {
     const saltBytes = crypto.getRandomValues(new Uint8Array(16));
     const aesKey = await deriveAesKey(password, saltBytes.buffer);
 
-    // Single IV per share (URL or file). Unique per share so safe for one-time use.
+    // Single IV per share
     const iv = crypto.getRandomValues(new Uint8Array(12));
 
     let encryptedContent = '';
@@ -195,9 +189,7 @@ serve(async (req: Request) => {
       const encryptedBytes = new Uint8Array(encryptedBuffer);
       encryptedContent = toBase64(encryptedBytes);
     } else if (file) {
-      // Handle file upload with memory-efficient processing
       try {
-        // Decode base64 to binary
         const fileData = fromBase64(file.data);
         
         // AES-256-GCM encryption
@@ -207,7 +199,7 @@ serve(async (req: Request) => {
           fileData
         );
         
-        // Upload to storage directly from encrypted buffer (no extra copy)
+        // Upload encrypted file to storage
         const fileName = `${shareToken}/${file.name}`;
         const { error: uploadError } = await supabase.storage
           .from('shared-content')
@@ -247,7 +239,7 @@ serve(async (req: Request) => {
     // Calculate expiry time
     const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString();
 
-    // Insert share record
+    // Insert share record with AES-256-GCM encryption metadata
     const { data: shareData, error: shareError } = await supabase
       .from('shared_pages')
       .insert({
