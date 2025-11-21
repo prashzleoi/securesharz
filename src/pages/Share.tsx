@@ -62,10 +62,10 @@ const Share = () => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
       
-      // Check file size (50 MB limit due to edge function memory constraints)
-      const maxSize = 50 * 1024 * 1024; // 50MB
+      // Check file size (40 MB limit for optimal performance)
+      const maxSize = 40 * 1024 * 1024; // 40MB
       if (selectedFile.size > maxSize) {
-        toast.error(`File size must be less than 50 MB. Your file is ${Math.round(selectedFile.size / 1024 / 1024)} MB`);
+        toast.error(`File size must be less than 40 MB. Your file is ${Math.round(selectedFile.size / 1024 / 1024)} MB`);
         return;
       }
       
@@ -294,7 +294,7 @@ const Share = () => {
 
               <TabsContent value="file" className="space-y-4">
                 <div>
-                  <Label htmlFor="file">Select File (up to 50 MB)</Label>
+                  <Label htmlFor="file">Select File (up to 40 MB)</Label>
                   <Input
                     id="file"
                     type="file"

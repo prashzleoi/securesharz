@@ -80,13 +80,13 @@ serve(async (req: Request) => {
     // Validate file size early (before processing) to prevent memory issues
     // Edge functions have ~150MB memory limit
     // Base64 adds ~33% overhead, encryption adds more
-    // Safe limit: 50MB (will be ~66MB as base64, ~80MB during processing)
+    // Safe limit: 40MB (will be ~53MB as base64, ~65MB during processing)
     if (file?.data) {
       const base64Size = file.data.length * 0.75; // Approximate decoded size
-      const maxSize = 50 * 1024 * 1024; // 50MB
+      const maxSize = 40 * 1024 * 1024; // 40MB
       if (base64Size > maxSize) {
         return new Response(
-          JSON.stringify({ error: `File too large. Maximum size is 50MB. Your file is ${Math.round(base64Size / 1024 / 1024)}MB` }),
+          JSON.stringify({ error: `File too large. Maximum size is 40MB. Your file is ${Math.round(base64Size / 1024 / 1024)}MB` }),
           { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -209,7 +209,7 @@ serve(async (req: Request) => {
         console.error('File processing error:', error);
         if (error.message?.includes('memory') || error.message?.includes('allocation')) {
           return new Response(
-            JSON.stringify({ error: 'File too large to process. Please use a smaller file (max 50MB)' }),
+            JSON.stringify({ error: 'File too large to process. Please use a smaller file (max 40MB)' }),
             { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
