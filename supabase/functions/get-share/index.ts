@@ -6,6 +6,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const encoder = new TextEncoder();
+
+const fromBase64 = (b64: string) =>
+  Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+
 interface GetShareRequest {
   identifier: string; // token or custom slug
   password: string;
@@ -56,7 +61,6 @@ serve(async (req: Request) => {
     }
 
     // Verify password
-    const encoder = new TextEncoder();
     const passwordData = encoder.encode(password);
     const hashBuffer = await crypto.subtle.digest('SHA-256', passwordData);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
@@ -76,53 +80,122 @@ serve(async (req: Request) => {
       .eq('id', shareData.id);
 
     // Decrypt content
-    const encryptionKey = shareData.encryption_metadata?.key;
-    if (!encryptionKey) {
-      return new Response(
-        JSON.stringify({ error: 'Encryption key not found' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    const encryptionMetadata = shareData.encryption_metadata as any;
+    const algorithm = encryptionMetadata?.algorithm || 'XOR';
 
     let decryptedContent: string | null = null;
     let fileData: string | null = null;
 
-    if (shareData.encrypted_content) {
-      // Decrypt URL
-      const encryptedBytes = Uint8Array.from(atob(shareData.encrypted_content), c => c.charCodeAt(0));
-      const keyBytes = new TextEncoder().encode(encryptionKey);
-      const decrypted = new Uint8Array(encryptedBytes.length);
-      
-      for (let i = 0; i < encryptedBytes.length; i++) {
-        decrypted[i] = encryptedBytes[i] ^ keyBytes[i % keyBytes.length];
-      }
-      
-      const decoder = new TextDecoder();
-      decryptedContent = decoder.decode(decrypted);
-    } else if (shareData.file_path) {
-      // Download and decrypt file
-      const { data: fileDataEncrypted, error: downloadError } = await supabase.storage
-        .from('shared-content')
-        .download(shareData.file_path);
+    if (algorithm === 'AES-256-GCM') {
+      const saltBytes = fromBase64(encryptionMetadata.salt);
+      const ivBytes = fromBase64(encryptionMetadata.iv);
 
-      if (downloadError || !fileDataEncrypted) {
-        console.error('Download error:', downloadError);
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(password),
+        'PBKDF2',
+        false,
+        ['deriveKey']
+      );
+
+      const aesKey = await crypto.subtle.deriveKey(
+        {
+          name: 'PBKDF2',
+          salt: saltBytes,
+          iterations: encryptionMetadata.iterations || 100000,
+          hash: 'SHA-256',
+        },
+        keyMaterial,
+        {
+          name: 'AES-GCM',
+          length: 256,
+        },
+        false,
+        ['decrypt']
+      );
+
+      if (shareData.encrypted_content) {
+        const encryptedBytes = fromBase64(shareData.encrypted_content);
+        const decryptedBuffer = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: ivBytes },
+          aesKey,
+          encryptedBytes
+        );
+        const decryptedBytes = new Uint8Array(decryptedBuffer);
+        const decoder = new TextDecoder();
+        decryptedContent = decoder.decode(decryptedBytes);
+      } else if (shareData.file_path) {
+        // Download and decrypt file
+        const { data: fileDataEncrypted, error: downloadError } = await supabase.storage
+          .from('shared-content')
+          .download(shareData.file_path);
+
+        if (downloadError || !fileDataEncrypted) {
+          console.error('Download error:', downloadError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to retrieve file' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const encryptedBytes = new Uint8Array(await fileDataEncrypted.arrayBuffer());
+        const decryptedBuffer = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: ivBytes },
+          aesKey,
+          encryptedBytes
+        );
+        const decryptedBytes = new Uint8Array(decryptedBuffer);
+
+        // Convert to base64 for client download
+        fileData = btoa(String.fromCharCode(...decryptedBytes));
+      }
+    } else {
+      // Legacy XOR decryption for existing shares
+      const encryptionKey = encryptionMetadata?.key;
+      if (!encryptionKey) {
         return new Response(
-          JSON.stringify({ error: 'Failed to retrieve file' }),
+          JSON.stringify({ error: 'Encryption key not found' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      const encryptedBytes = new Uint8Array(await fileDataEncrypted.arrayBuffer());
-      const keyBytes = new TextEncoder().encode(encryptionKey);
-      const decrypted = new Uint8Array(encryptedBytes.length);
-      
-      for (let i = 0; i < encryptedBytes.length; i++) {
-        decrypted[i] = encryptedBytes[i] ^ keyBytes[i % keyBytes.length];
-      }
+      if (shareData.encrypted_content) {
+        // Decrypt URL
+        const encryptedBytes = Uint8Array.from(atob(shareData.encrypted_content), c => c.charCodeAt(0));
+        const keyBytes = new TextEncoder().encode(encryptionKey);
+        const decrypted = new Uint8Array(encryptedBytes.length);
+        
+        for (let i = 0; i < encryptedBytes.length; i++) {
+          decrypted[i] = encryptedBytes[i] ^ keyBytes[i % keyBytes.length];
+        }
+        
+        const decoder = new TextDecoder();
+        decryptedContent = decoder.decode(decrypted);
+      } else if (shareData.file_path) {
+        // Download and decrypt file
+        const { data: fileDataEncrypted, error: downloadError } = await supabase.storage
+          .from('shared-content')
+          .download(shareData.file_path);
 
-      // Convert to base64
-      fileData = btoa(String.fromCharCode(...decrypted));
+        if (downloadError || !fileDataEncrypted) {
+          console.error('Download error:', downloadError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to retrieve file' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const encryptedBytes = new Uint8Array(await fileDataEncrypted.arrayBuffer());
+        const keyBytes = new TextEncoder().encode(encryptionKey);
+        const decrypted = new Uint8Array(encryptedBytes.length);
+        
+        for (let i = 0; i < encryptedBytes.length; i++) {
+          decrypted[i] = encryptedBytes[i] ^ keyBytes[i % keyBytes.length];
+        }
+
+        // Convert to base64
+        fileData = btoa(String.fromCharCode(...decrypted));
+      }
     }
 
     console.log('Share accessed successfully:', shareData.id);
