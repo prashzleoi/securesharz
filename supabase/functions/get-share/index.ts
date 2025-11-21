@@ -29,13 +29,54 @@ serve(async (req: Request) => {
 
     const { identifier, password }: GetShareRequest = await req.json();
 
-    // Find share by token or custom slug
-    const { data: shareData, error: shareError } = await supabase
+    // Rate limiting: 10 attempts per 15 minutes per identifier
+    const rateLimitKey = `ratelimit:get-share:${identifier}`;
+    const kv = await Deno.openKv();
+    const rateLimitEntry = await kv.get<{ count: number; resetAt: number }>([rateLimitKey]);
+    const now = Date.now();
+    
+    if (rateLimitEntry.value) {
+      if (now < rateLimitEntry.value.resetAt) {
+        if (rateLimitEntry.value.count >= 10) {
+          return new Response(
+            JSON.stringify({ error: 'Too many attempts. Please try again in 15 minutes.' }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        await kv.set([rateLimitKey], { count: rateLimitEntry.value.count + 1, resetAt: rateLimitEntry.value.resetAt }, { expireIn: 15 * 60 * 1000 });
+      } else {
+        await kv.set([rateLimitKey], { count: 1, resetAt: now + 15 * 60 * 1000 }, { expireIn: 15 * 60 * 1000 });
+      }
+    } else {
+      await kv.set([rateLimitKey], { count: 1, resetAt: now + 15 * 60 * 1000 }, { expireIn: 15 * 60 * 1000 });
+    }
+
+    // Find share by token or custom slug - using separate queries to prevent SQL injection
+    let shareData = null;
+    let shareError = null;
+
+    // Try finding by share_token first
+    const { data: shareByToken, error: errorByToken } = await supabase
       .from('shared_pages')
       .select('*')
-      .or(`share_token.eq."${identifier}",custom_slug.eq."${identifier}"`)
+      .eq('share_token', identifier)
       .is('deleted_at', null)
-      .single();
+      .maybeSingle();
+
+    if (shareByToken) {
+      shareData = shareByToken;
+    } else {
+      // Try finding by custom_slug
+      const { data: shareBySlug, error: errorBySlug } = await supabase
+        .from('shared_pages')
+        .select('*')
+        .eq('custom_slug', identifier)
+        .is('deleted_at', null)
+        .maybeSingle();
+      
+      shareData = shareBySlug;
+      shareError = errorBySlug;
+    }
 
     if (shareError || !shareData) {
       return new Response(
