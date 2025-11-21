@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Lock, Download, ExternalLink, Clock, Eye } from "lucide-react";
+import { Lock, ExternalLink, Clock, Eye, Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 const ViewShare = () => {
@@ -15,8 +15,17 @@ const ViewShare = () => {
   const [loading, setLoading] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [shareData, setShareData] = useState<any>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [contentUrl, setContentUrl] = useState<string | null>(null);
+
+  // Cleanup function to revoke URLs and clear data
+  const cleanupContent = () => {
+    if (contentUrl) {
+      window.URL.revokeObjectURL(contentUrl);
+      setContentUrl(null);
+    }
+    setShareData(null);
+    setUnlocked(false);
+  };
 
   // Auto-check expiry while viewing
   useEffect(() => {
@@ -24,19 +33,77 @@ const ViewShare = () => {
     
     const checkExpiry = () => {
       if (new Date(shareData.expiresAt) < new Date()) {
-        toast.error("This share has expired");
-        setUnlocked(false);
-        setShareData(null);
-        if (imageUrl) window.URL.revokeObjectURL(imageUrl);
-        if (pdfUrl) window.URL.revokeObjectURL(pdfUrl);
-        setImageUrl(null);
-        setPdfUrl(null);
+        toast.error("This share has expired and has been cleared");
+        cleanupContent();
       }
     };
 
     const interval = setInterval(checkExpiry, 1000);
     return () => clearInterval(interval);
-  }, [shareData?.expiresAt, unlocked, imageUrl, pdfUrl]);
+  }, [shareData?.expiresAt, unlocked, contentUrl]);
+
+  // Cleanup on page unload/navigation
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      cleanupContent();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // User switched tabs or minimized - clear content for security
+        cleanupContent();
+        toast.info("Content cleared for security");
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      cleanupContent();
+    };
+  }, [contentUrl]);
+
+  // Prevent context menu, screenshots, and print
+  useEffect(() => {
+    if (!unlocked) return;
+
+    const preventActions = (e: Event) => {
+      e.preventDefault();
+      return false;
+    };
+
+    const preventKeyboardShortcuts = (e: KeyboardEvent) => {
+      // Prevent PrintScreen, Cmd+Shift+3/4 (Mac), Windows+PrintScreen
+      if (
+        e.key === 'PrintScreen' ||
+        (e.metaKey && e.shiftKey && (e.key === '3' || e.key === '4')) ||
+        (e.metaKey && e.key === 'p') || // Cmd/Ctrl + P (print)
+        (e.ctrlKey && e.key === 'p')
+      ) {
+        e.preventDefault();
+        toast.error("Screenshots and printing are disabled for security");
+        return false;
+      }
+    };
+
+    // Disable context menu
+    document.addEventListener('contextmenu', preventActions);
+    
+    // Disable keyboard shortcuts
+    document.addEventListener('keydown', preventKeyboardShortcuts);
+    
+    // Disable drag and drop
+    document.addEventListener('dragstart', preventActions);
+    
+    return () => {
+      document.removeEventListener('contextmenu', preventActions);
+      document.removeEventListener('keydown', preventKeyboardShortcuts);
+      document.removeEventListener('dragstart', preventActions);
+    };
+  }, [unlocked]);
 
   const handleUnlock = async () => {
     if (!password) {
@@ -56,7 +123,6 @@ const ViewShare = () => {
 
       if (error) {
         console.error('Error response from get-share:', error);
-        // Extract detailed error message from edge function response
         const errorMessage = error.message || "Failed to unlock content";
         toast.error(errorMessage);
         return;
@@ -70,7 +136,7 @@ const ViewShare = () => {
       setShareData(data);
       setUnlocked(true);
       
-      // Create blob URLs for inline display
+      // Create blob URL for inline display (no download option)
       if (data.fileData) {
         const byteCharacters = atob(data.fileData);
         const byteNumbers = new Array(byteCharacters.length);
@@ -80,15 +146,10 @@ const ViewShare = () => {
         const byteArray = new Uint8Array(byteNumbers);
         const blob = new Blob([byteArray], { type: data.contentType });
         const url = window.URL.createObjectURL(blob);
-        
-        if (data.contentType?.startsWith('image/')) {
-          setImageUrl(url);
-        } else if (data.contentType === 'application/pdf') {
-          setPdfUrl(url);
-        }
+        setContentUrl(url);
       }
       
-      toast.success("Content unlocked successfully!");
+      toast.success("Content unlocked - view only mode");
     } catch (error: any) {
       console.error('Error unlocking share:', error);
       toast.error(error.message || "Incorrect password or share not found");
@@ -97,45 +158,89 @@ const ViewShare = () => {
     }
   };
 
-  // Cleanup blob URLs on unmount
-  useEffect(() => {
-    return () => {
-      if (imageUrl) {
-        window.URL.revokeObjectURL(imageUrl);
-      }
-      if (pdfUrl) {
-        window.URL.revokeObjectURL(pdfUrl);
-      }
-    };
-  }, [imageUrl, pdfUrl]);
-
-  const handleDownload = () => {
-    if (!shareData.fileData) return;
-
-    const byteCharacters = atob(shareData.fileData);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: shareData.contentType });
-    
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = shareData.fileName;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-    
-    toast.success("File downloaded!");
-  };
-
   const openUrl = () => {
     if (shareData.content) {
       window.open(shareData.content, '_blank');
     }
+  };
+
+  const renderContent = () => {
+    if (!contentUrl || !shareData) return null;
+
+    const contentType = shareData.contentType;
+
+    if (contentType?.startsWith('image/')) {
+      return (
+        <div 
+          className="rounded-lg overflow-hidden border border-border select-none"
+          style={{ 
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            pointerEvents: 'none'
+          }}
+        >
+          <img 
+            src={contentUrl} 
+            alt="Protected content"
+            className="w-full h-auto max-h-96 object-contain bg-secondary/5"
+            onContextMenu={(e) => e.preventDefault()}
+            draggable={false}
+            style={{
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              WebkitTouchCallout: 'none'
+            }}
+          />
+          <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-transparent via-transparent to-primary/5" />
+        </div>
+      );
+    }
+
+    if (contentType === 'application/pdf') {
+      return (
+        <div className="rounded-lg overflow-hidden border border-border bg-secondary/5">
+          <iframe 
+            src={`${contentUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+            title="Protected PDF"
+            className="w-full h-[600px]"
+            style={{ 
+              border: 'none',
+              pointerEvents: 'auto'
+            }}
+            sandbox="allow-same-origin"
+          />
+        </div>
+      );
+    }
+
+    if (contentType?.includes('zip') || contentType?.includes('compressed')) {
+      return (
+        <div className="rounded-lg border border-border bg-secondary/5 p-6 text-center">
+          <Shield className="w-12 h-12 mx-auto mb-4 text-primary" />
+          <p className="text-lg font-semibold mb-2">Compressed File</p>
+          <p className="text-sm text-muted-foreground">
+            {shareData.fileName}
+          </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            View-only mode - Downloads disabled for security
+          </p>
+        </div>
+      );
+    }
+
+    // Generic file preview
+    return (
+      <div className="rounded-lg border border-border bg-secondary/5 p-6 text-center">
+        <Shield className="w-12 h-12 mx-auto mb-4 text-primary" />
+        <p className="text-lg font-semibold mb-2">Protected File</p>
+        <p className="text-sm text-muted-foreground">
+          {shareData.fileName}
+        </p>
+        <p className="text-xs text-muted-foreground mt-2">
+          File type: {contentType || 'Unknown'}
+        </p>
+      </div>
+    );
   };
 
   return (
@@ -147,7 +252,7 @@ const ViewShare = () => {
           </div>
           <h1 className="text-2xl font-bold mb-2">Secure Share</h1>
           <p className="text-muted-foreground">
-            This content is password protected
+            {unlocked ? "View-only mode - Screenshots & downloads disabled" : "This content is password protected"}
           </p>
         </div>
 
@@ -193,6 +298,10 @@ const ViewShare = () => {
                   <span>Views: {shareData.accessCount}{shareData.maxAccessCount ? `/${shareData.maxAccessCount}` : ''}</span>
                 </div>
               </div>
+              <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500 mt-2">
+                <Shield className="w-3 h-3" />
+                <span>Protected: Screenshots & downloads disabled</span>
+              </div>
             </div>
 
             {shareData.content && (
@@ -202,40 +311,17 @@ const ViewShare = () => {
               </Button>
             )}
 
-            {imageUrl && shareData.contentType?.startsWith('image/') && (
-              <div className="rounded-lg overflow-hidden border border-border">
-                <img 
-                  src={imageUrl} 
-                  alt={shareData.fileName} 
-                  className="w-full h-auto max-h-96 object-contain bg-secondary/5"
-                />
-              </div>
-            )}
-
-            {pdfUrl && shareData.contentType === 'application/pdf' && (
-              <div className="rounded-lg overflow-hidden border border-border bg-secondary/5">
-                <iframe 
-                  src={pdfUrl} 
-                  title={shareData.fileName}
-                  className="w-full h-[600px]"
-                  style={{ border: 'none' }}
-                />
-              </div>
-            )}
-
-            {shareData.fileData && !shareData.contentType?.startsWith('image/') && (
-              <Button onClick={handleDownload} className="w-full">
-                <Download className="w-4 h-4 mr-2" />
-                Download {shareData.contentType === 'application/pdf' ? 'PDF' : 'File'}
-              </Button>
-            )}
+            {renderContent()}
 
             <Button 
               variant="outline" 
-              onClick={() => navigate('/')}
+              onClick={() => {
+                cleanupContent();
+                navigate('/');
+              }}
               className="w-full"
             >
-              Create Your Own Secure Share
+              Clear & Create Your Own Secure Share
             </Button>
           </div>
         )}
