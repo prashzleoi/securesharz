@@ -16,6 +16,27 @@ const ViewShare = () => {
   const [unlocked, setUnlocked] = useState(false);
   const [shareData, setShareData] = useState<any>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+
+  // Auto-check expiry while viewing
+  useEffect(() => {
+    if (!shareData?.expiresAt || !unlocked) return;
+    
+    const checkExpiry = () => {
+      if (new Date(shareData.expiresAt) < new Date()) {
+        toast.error("This share has expired");
+        setUnlocked(false);
+        setShareData(null);
+        if (imageUrl) window.URL.revokeObjectURL(imageUrl);
+        if (pdfUrl) window.URL.revokeObjectURL(pdfUrl);
+        setImageUrl(null);
+        setPdfUrl(null);
+      }
+    };
+
+    const interval = setInterval(checkExpiry, 1000);
+    return () => clearInterval(interval);
+  }, [shareData?.expiresAt, unlocked, imageUrl, pdfUrl]);
 
   const handleUnlock = async () => {
     if (!password) {
@@ -49,8 +70,8 @@ const ViewShare = () => {
       setShareData(data);
       setUnlocked(true);
       
-      // If it's an image, create blob URL for inline display
-      if (data.fileData && data.contentType?.startsWith('image/')) {
+      // Create blob URLs for inline display
+      if (data.fileData) {
         const byteCharacters = atob(data.fileData);
         const byteNumbers = new Array(byteCharacters.length);
         for (let i = 0; i < byteCharacters.length; i++) {
@@ -59,7 +80,12 @@ const ViewShare = () => {
         const byteArray = new Uint8Array(byteNumbers);
         const blob = new Blob([byteArray], { type: data.contentType });
         const url = window.URL.createObjectURL(blob);
-        setImageUrl(url);
+        
+        if (data.contentType?.startsWith('image/')) {
+          setImageUrl(url);
+        } else if (data.contentType === 'application/pdf') {
+          setPdfUrl(url);
+        }
       }
       
       toast.success("Content unlocked successfully!");
@@ -71,14 +97,17 @@ const ViewShare = () => {
     }
   };
 
-  // Cleanup blob URL on unmount
+  // Cleanup blob URLs on unmount
   useEffect(() => {
     return () => {
       if (imageUrl) {
         window.URL.revokeObjectURL(imageUrl);
       }
+      if (pdfUrl) {
+        window.URL.revokeObjectURL(pdfUrl);
+      }
     };
-  }, [imageUrl]);
+  }, [imageUrl, pdfUrl]);
 
   const handleDownload = () => {
     if (!shareData.fileData) return;
@@ -183,10 +212,21 @@ const ViewShare = () => {
               </div>
             )}
 
-            {shareData.fileData && (
+            {pdfUrl && shareData.contentType === 'application/pdf' && (
+              <div className="rounded-lg overflow-hidden border border-border bg-secondary/5">
+                <iframe 
+                  src={pdfUrl} 
+                  title={shareData.fileName}
+                  className="w-full h-[600px]"
+                  style={{ border: 'none' }}
+                />
+              </div>
+            )}
+
+            {shareData.fileData && !shareData.contentType?.startsWith('image/') && (
               <Button onClick={handleDownload} className="w-full">
                 <Download className="w-4 h-4 mr-2" />
-                Download {shareData.contentType?.startsWith('image/') ? 'Image' : 'File'}
+                Download {shareData.contentType === 'application/pdf' ? 'PDF' : 'File'}
               </Button>
             )}
 
