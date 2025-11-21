@@ -77,6 +77,21 @@ serve(async (req: Request) => {
       title,
     }: CreateShareRequest = await req.json();
 
+    // Validate file size early (before processing) to prevent memory issues
+    // Edge functions have ~150MB memory limit
+    // Base64 adds ~33% overhead, encryption adds more
+    // Safe limit: 50MB (will be ~66MB as base64, ~80MB during processing)
+    if (file?.data) {
+      const base64Size = file.data.length * 0.75; // Approximate decoded size
+      const maxSize = 50 * 1024 * 1024; // 50MB
+      if (base64Size > maxSize) {
+        return new Response(
+          JSON.stringify({ error: `File too large. Maximum size is 50MB. Your file is ${Math.round(base64Size / 1024 / 1024)}MB` }),
+          { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     // Validate URN exists
     const { data: urnData, error: urnError } = await supabase
       .from('urns')
@@ -158,37 +173,48 @@ serve(async (req: Request) => {
       const encryptedBytes = new Uint8Array(encryptedBuffer);
       encryptedContent = toBase64(encryptedBytes);
     } else if (file) {
-      // Handle file upload
-      const fileData = fromBase64(file.data);
-      
-      // AES-256-GCM encryption for file data
-      const encryptedBuffer = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv },
-        aesKey,
-        fileData
-      );
-      const encryptedFileBytes = new Uint8Array(encryptedBuffer);
-
-      // Upload to storage
-      const fileName = `${shareToken}/${file.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from('shared-content')
-        .upload(fileName, encryptedFileBytes, {
-          contentType: file.type,
-          upsert: false,
-        });
-
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to upload file' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      // Handle file upload with memory-efficient processing
+      try {
+        // Decode base64 to binary
+        const fileData = fromBase64(file.data);
+        
+        // AES-256-GCM encryption
+        const encryptedBuffer = await crypto.subtle.encrypt(
+          { name: 'AES-GCM', iv },
+          aesKey,
+          fileData
         );
-      }
+        
+        // Upload to storage directly from encrypted buffer (no extra copy)
+        const fileName = `${shareToken}/${file.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from('shared-content')
+          .upload(fileName, new Uint8Array(encryptedBuffer), {
+            contentType: file.type,
+            upsert: false,
+          });
 
-      filePath = fileName;
-      contentType = file.type;
-      originalUrl = file.name;
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to upload file' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        filePath = fileName;
+        contentType = file.type;
+        originalUrl = file.name;
+      } catch (error: any) {
+        console.error('File processing error:', error);
+        if (error.message?.includes('memory') || error.message?.includes('allocation')) {
+          return new Response(
+            JSON.stringify({ error: 'File too large to process. Please use a smaller file (max 50MB)' }),
+            { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        throw error;
+      }
     } else {
       return new Response(
         JSON.stringify({ error: 'Either content or file must be provided' }),
