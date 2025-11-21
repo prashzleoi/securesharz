@@ -77,6 +77,28 @@ serve(async (req: Request) => {
       title,
     }: CreateShareRequest = await req.json();
 
+    // Rate limiting: 20 shares per hour per URN
+    const rateLimitKey = `ratelimit:create-share:${urn}`;
+    const kv = await Deno.openKv();
+    const rateLimitEntry = await kv.get<{ count: number; resetAt: number }>([rateLimitKey]);
+    const now = Date.now();
+    
+    if (rateLimitEntry.value) {
+      if (now < rateLimitEntry.value.resetAt) {
+        if (rateLimitEntry.value.count >= 20) {
+          return new Response(
+            JSON.stringify({ error: 'Too many shares created. Please try again in an hour.' }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        await kv.set([rateLimitKey], { count: rateLimitEntry.value.count + 1, resetAt: rateLimitEntry.value.resetAt }, { expireIn: 60 * 60 * 1000 });
+      } else {
+        await kv.set([rateLimitKey], { count: 1, resetAt: now + 60 * 60 * 1000 }, { expireIn: 60 * 60 * 1000 });
+      }
+    } else {
+      await kv.set([rateLimitKey], { count: 1, resetAt: now + 60 * 60 * 1000 }, { expireIn: 60 * 60 * 1000 });
+    }
+
     // Validate file size early (before processing) to prevent memory issues
     // Edge functions have ~150MB memory limit
     // Base64 adds ~33% overhead, encryption adds more

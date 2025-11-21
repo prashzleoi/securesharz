@@ -16,6 +16,29 @@ serve(async (req: Request) => {
   }
 
   try {
+    // Rate limiting: 5 URNs per hour per IP
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown';
+    const rateLimitKey = `ratelimit:generate-urn:${clientIp}`;
+    const kv = await Deno.openKv();
+    const rateLimitEntry = await kv.get<{ count: number; resetAt: number }>([rateLimitKey]);
+    const now = Date.now();
+    
+    if (rateLimitEntry.value) {
+      if (now < rateLimitEntry.value.resetAt) {
+        if (rateLimitEntry.value.count >= 5) {
+          return new Response(
+            JSON.stringify({ error: 'Too many URN generation requests. Please try again in an hour.' }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        await kv.set([rateLimitKey], { count: rateLimitEntry.value.count + 1, resetAt: rateLimitEntry.value.resetAt }, { expireIn: 60 * 60 * 1000 });
+      } else {
+        await kv.set([rateLimitKey], { count: 1, resetAt: now + 60 * 60 * 1000 }, { expireIn: 60 * 60 * 1000 });
+      }
+    } else {
+      await kv.set([rateLimitKey], { count: 1, resetAt: now + 60 * 60 * 1000 }, { expireIn: 60 * 60 * 1000 });
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
