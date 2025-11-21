@@ -28,7 +28,7 @@ serve(async (req: Request) => {
     const { data: shareData, error: shareError } = await supabase
       .from('shared_pages')
       .select('*')
-      .or(`share_token.eq.${identifier},custom_slug.eq.${identifier}`)
+      .or(`share_token.eq."${identifier}",custom_slug.eq."${identifier}"`)
       .is('deleted_at', null)
       .single();
 

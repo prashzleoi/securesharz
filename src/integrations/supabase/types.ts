@@ -45,7 +45,7 @@ export type Database = {
           created_at: string
           custom_slug: string | null
           deleted_at: string | null
-          encrypted_content: string
+          encrypted_content: string | null
           encryption_metadata: Json | null
           expires_at: string | null
           file_path: string | null
@@ -56,7 +56,7 @@ export type Database = {
           share_token: string
           title: string
           urn_id: string | null
-          user_id: string
+          user_id: string | null
           view_count: number
         }
         Insert: {
@@ -65,7 +65,7 @@ export type Database = {
           created_at?: string
           custom_slug?: string | null
           deleted_at?: string | null
-          encrypted_content: string
+          encrypted_content?: string | null
           encryption_metadata?: Json | null
           expires_at?: string | null
           file_path?: string | null
@@ -76,7 +76,7 @@ export type Database = {
           share_token: string
           title: string
           urn_id?: string | null
-          user_id: string
+          user_id?: string | null
           view_count?: number
         }
         Update: {
@@ -85,7 +85,7 @@ export type Database = {
           created_at?: string
           custom_slug?: string | null
           deleted_at?: string | null
-          encrypted_content?: string
+          encrypted_content?: string | null
           encryption_metadata?: Json | null
           expires_at?: string | null
           file_path?: string | null
@@ -96,7 +96,7 @@ export type Database = {
           share_token?: string
           title?: string
           urn_id?: string | null
-          user_id?: string
+          user_id?: string | null
           view_count?: number
         }
         Relationships: [
