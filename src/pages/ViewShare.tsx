@@ -15,6 +15,7 @@ const ViewShare = () => {
   const [loading, setLoading] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [shareData, setShareData] = useState<any>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
 
   const handleUnlock = async () => {
     if (!password) {
@@ -47,6 +48,20 @@ const ViewShare = () => {
 
       setShareData(data);
       setUnlocked(true);
+      
+      // If it's an image, create blob URL for inline display
+      if (data.fileData && data.contentType?.startsWith('image/')) {
+        const byteCharacters = atob(data.fileData);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: data.contentType });
+        const url = window.URL.createObjectURL(blob);
+        setImageUrl(url);
+      }
+      
       toast.success("Content unlocked successfully!");
     } catch (error: any) {
       console.error('Error unlocking share:', error);
@@ -55,6 +70,15 @@ const ViewShare = () => {
       setLoading(false);
     }
   };
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (imageUrl) {
+        window.URL.revokeObjectURL(imageUrl);
+      }
+    };
+  }, [imageUrl]);
 
   const handleDownload = () => {
     if (!shareData.fileData) return;
@@ -87,7 +111,7 @@ const ViewShare = () => {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <Card className="max-w-md w-full p-6">
+      <Card className="max-w-2xl w-full p-6">
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-full mb-4">
             <Lock className="w-8 h-8 text-primary" />
@@ -149,10 +173,20 @@ const ViewShare = () => {
               </Button>
             )}
 
+            {imageUrl && shareData.contentType?.startsWith('image/') && (
+              <div className="rounded-lg overflow-hidden border border-border">
+                <img 
+                  src={imageUrl} 
+                  alt={shareData.fileName} 
+                  className="w-full h-auto max-h-96 object-contain bg-secondary/5"
+                />
+              </div>
+            )}
+
             {shareData.fileData && (
               <Button onClick={handleDownload} className="w-full">
                 <Download className="w-4 h-4 mr-2" />
-                Download File
+                Download {shareData.contentType?.startsWith('image/') ? 'Image' : 'File'}
               </Button>
             )}
 
