@@ -12,6 +12,35 @@ const encoder = new TextEncoder();
 const fromBase64 = (b64: string) =>
   Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 
+// Decompression helper using native DecompressionStream API
+async function decompressData(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(data);
+      controller.close();
+    }
+  }).pipeThrough(new DecompressionStream('gzip'));
+  
+  const chunks: Uint8Array[] = [];
+  const reader = stream.getReader();
+  
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const result = new Uint8Array(new ArrayBuffer(totalLength));
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  
+  return result;
+}
+
 interface GetShareRequest {
   identifier: string;
   password: string;
@@ -50,6 +79,17 @@ serve(async (req: Request) => {
 
     if (rateLimitError || rateLimitAllowed === false) {
       console.log('Rate limit exceeded for:', identifier);
+      
+      // Log security event
+      await supabase.rpc('log_security_event', {
+        p_event_type: 'rate_limit_exceeded',
+        p_event_category: 'access_control',
+        p_severity: 'warning',
+        p_ip_address: req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown',
+        p_user_agent: req.headers.get('user-agent') || 'unknown',
+        p_metadata: { identifier, endpoint: 'get-share' }
+      });
+      
       return new Response(
         JSON.stringify({ error: 'Too many attempts. Please try again in 15 minutes.' }),
         { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -80,6 +120,15 @@ serve(async (req: Request) => {
     }
 
     if (!shareData) {
+      // Log failed access attempt
+      await supabase.rpc('log_security_event', {
+        p_event_type: 'share_not_found',
+        p_event_category: 'access_attempt',
+        p_severity: 'info',
+        p_ip_address: req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown',
+        p_metadata: { identifier }
+      });
+      
       return new Response(
         JSON.stringify({ error: 'Share not found or has been deleted' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -106,6 +155,16 @@ serve(async (req: Request) => {
     const isPasswordValid = await bcrypt.compare(password, shareData.password_hash);
 
     if (!isPasswordValid) {
+      // Log failed password attempt
+      await supabase.rpc('log_security_event', {
+        p_event_type: 'password_failed',
+        p_event_category: 'authentication',
+        p_severity: 'warning',
+        p_share_id: shareData.id,
+        p_ip_address: req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown',
+        p_metadata: { identifier }
+      });
+      
       return new Response(
         JSON.stringify({ error: 'Incorrect password' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -166,9 +225,13 @@ serve(async (req: Request) => {
         aesKey,
         encryptedBytes
       );
-      const decryptedBytes = new Uint8Array(decryptedBuffer);
+      
+      // Decompress after decryption
+      const compressedBytes = new Uint8Array(decryptedBuffer);
+      const decompressedBytes = await decompressData(compressedBytes);
+      
       const decoder = new TextDecoder();
-      decryptedContent = decoder.decode(decryptedBytes);
+      decryptedContent = decoder.decode(decompressedBytes);
     } else if (shareData.file_path) {
       // Download and decrypt file
       const { data: fileDataEncrypted, error: downloadError } = await supabase.storage
@@ -189,12 +252,29 @@ serve(async (req: Request) => {
         aesKey,
         encryptedBytes
       );
-      const decryptedBytes = new Uint8Array(decryptedBuffer);
+      
+      // Decompress after decryption
+      const compressedBytes = new Uint8Array(decryptedBuffer);
+      const decryptedBytes = await decompressData(compressedBytes);
 
       // Convert to base64 for client download
       fileData = btoa(String.fromCharCode(...decryptedBytes));
     }
 
+    // Log successful access
+    await supabase.rpc('log_security_event', {
+      p_event_type: 'share_accessed',
+      p_event_category: 'access_success',
+      p_severity: 'info',
+      p_share_id: shareData.id,
+      p_ip_address: req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown',
+      p_metadata: { 
+        identifier, 
+        access_count: shareData.access_count + 1,
+        content_type: shareData.content_type 
+      }
+    });
+    
     console.log('Share accessed successfully:', shareData.id);
 
     return new Response(

@@ -15,6 +15,35 @@ const toBase64 = (bytes: Uint8Array) =>
 const fromBase64 = (b64: string) =>
   Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 
+// Compression helper using native CompressionStream API
+async function compressData(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(data);
+      controller.close();
+    }
+  }).pipeThrough(new CompressionStream('gzip'));
+  
+  const chunks: Uint8Array[] = [];
+  const reader = stream.getReader();
+  
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const result = new Uint8Array(new ArrayBuffer(totalLength));
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  
+  return result;
+}
+
 async function deriveAesKey(password: string, salt: ArrayBuffer): Promise<CryptoKey> {
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
@@ -91,6 +120,16 @@ serve(async (req: Request) => {
 
     if (rateLimitError || rateLimitAllowed === false) {
       console.log('Rate limit exceeded for URN:', urn);
+      
+      // Log rate limit event
+      await supabase.rpc('log_security_event', {
+        p_event_type: 'rate_limit_exceeded',
+        p_event_category: 'access_control',
+        p_severity: 'warning',
+        p_ip_address: req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown',
+        p_metadata: { urn, endpoint: 'create-share' }
+      });
+      
       return new Response(
         JSON.stringify({ error: 'Rate limit exceeded. Maximum 20 shares per hour.' }),
         { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -177,12 +216,17 @@ serve(async (req: Request) => {
 
       originalUrl = content;
       
-      // AES-256-GCM encryption for URL content
+      // Compress then encrypt URL content (40-70% space savings)
       const contentBytes = encoder.encode(content);
+      const compressedBytes = await compressData(contentBytes);
+      const compressionRatio = Math.round((1 - compressedBytes.length / contentBytes.length) * 100);
+      console.log(`URL compression: ${compressionRatio}% smaller (${contentBytes.length} → ${compressedBytes.length} bytes)`);
+      
+      // AES-256-GCM encryption
       const encryptedBuffer = await crypto.subtle.encrypt(
         { name: 'AES-GCM', iv },
         aesKey,
-        contentBytes
+        compressedBytes.buffer as ArrayBuffer
       );
       const encryptedBytes = new Uint8Array(encryptedBuffer);
       encryptedContent = toBase64(encryptedBytes);
@@ -190,11 +234,16 @@ serve(async (req: Request) => {
       try {
         const fileData = fromBase64(file.data);
         
+        // Compress file data (40-70% space savings for text/documents)
+        const compressedData = await compressData(fileData);
+        const compressionRatio = Math.round((1 - compressedData.length / fileData.length) * 100);
+        console.log(`File compression: ${compressionRatio}% smaller (${fileData.length} → ${compressedData.length} bytes)`);
+        
         // AES-256-GCM encryption
         const encryptedBuffer = await crypto.subtle.encrypt(
           { name: 'AES-GCM', iv },
           aesKey,
-          fileData
+          compressedData.buffer as ArrayBuffer
         );
         
         // Upload encrypted file to storage
@@ -271,6 +320,22 @@ serve(async (req: Request) => {
       );
     }
 
+    // Log share creation
+    await supabase.rpc('log_security_event', {
+      p_event_type: 'share_created',
+      p_event_category: 'content_management',
+      p_severity: 'info',
+      p_share_id: shareData.id,
+      p_urn_id: urnData.id,
+      p_metadata: {
+        has_file: !!filePath,
+        content_type: contentType,
+        expiry_minutes: expiryMinutes,
+        has_custom_slug: !!customSlug,
+        max_access_count: maxAccessCount
+      }
+    });
+    
     console.log('Share created successfully:', shareData.id);
 
     // Generate share link
