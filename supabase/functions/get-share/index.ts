@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import * as bcrypt from "https://deno.land/x/bcrypt@v0.3.0/mod.ts";
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -151,8 +151,46 @@ serve(async (req: Request) => {
       );
     }
 
-    // Verify password using bcrypt (built-in constant-time comparison)
-    const isPasswordValid = await bcrypt.compare(password, shareData.password_hash);
+    // Verify password using PBKDF2-derived hash (constant-time comparison)
+    const [storedSaltB64, storedHashB64] = (shareData.password_hash || '').split(':');
+
+    if (!storedSaltB64 || !storedHashB64) {
+      return new Response(
+        JSON.stringify({ error: 'This share uses an outdated password format and can no longer be accessed. Please ask the owner to create a new share.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const storedSalt = fromBase64(storedSaltB64);
+    const storedHash = fromBase64(storedHashB64);
+
+    const passwordKeyMaterial = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(password),
+      'PBKDF2',
+      false,
+      ['deriveBits']
+    );
+
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        salt: storedSalt,
+        iterations: 100000,
+        hash: 'SHA-256',
+      },
+      passwordKeyMaterial,
+      256
+    );
+
+    const derivedBytes = new Uint8Array(derivedBits);
+
+    let isPasswordValid = derivedBytes.length === storedHash.length;
+    for (let i = 0; i < derivedBytes.length && isPasswordValid; i++) {
+      if (derivedBytes[i] !== storedHash[i]) {
+        isPasswordValid = false;
+      }
+    }
 
     if (!isPasswordValid) {
       // Log failed password attempt
@@ -170,6 +208,7 @@ serve(async (req: Request) => {
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
 
     // Increment access count
     await supabase

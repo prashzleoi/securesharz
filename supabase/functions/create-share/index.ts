@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import * as bcrypt from 'https://deno.land/x/bcrypt@v0.3.0/mod.ts';
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -181,8 +181,30 @@ serve(async (req: Request) => {
       );
     }
 
-    // Hash password using bcrypt
-    const passwordHash = await bcrypt.hash(password);
+    // Derive password hash using PBKDF2 (separate from encryption key)
+    const passwordSalt = crypto.getRandomValues(new Uint8Array(16));
+    const passwordKeyMaterial = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(password),
+      'PBKDF2',
+      false,
+      ['deriveBits']
+    );
+
+    const passwordDerivedBits = await crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        salt: passwordSalt,
+        iterations: 100000,
+        hash: 'SHA-256',
+      },
+      passwordKeyMaterial,
+      256
+    );
+
+    const passwordHashBytes = new Uint8Array(passwordDerivedBits);
+    const passwordHash = `${toBase64(passwordSalt)}:${toBase64(passwordHashBytes)}`;
+
 
     // Generate share token
     const tokenBytes = new Uint8Array(32);
