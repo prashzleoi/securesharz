@@ -83,25 +83,41 @@ const Auth = () => {
       return;
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-    setLoading(false);
+      if (error) throw error;
 
-    if (error) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
+      // Check if 2FA is enabled
+      if (data.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('two_factor_enabled')
+          .eq('user_id', data.user.id)
+          .single();
+
+        if (profile?.two_factor_enabled) {
+          // Store temp session and redirect to 2FA verification
+          sessionStorage.setItem('pending_2fa_user', data.user.id);
+          navigate('/verify-2fa');
+          setLoading(false);
+          return;
+        }
+      }
+
       toast({
         title: "Welcome back!",
         description: "You've successfully signed in.",
       });
       navigate("/dashboard");
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 

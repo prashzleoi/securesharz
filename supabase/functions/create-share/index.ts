@@ -204,8 +204,8 @@ serve(async (req: Request) => {
     let originalUrl = '';
 
     if (content) {
-      // Validate URL
-      const { data: isValid } = await supabase.rpc('validate_url', { url_input: content });
+      // Validate URL with comprehensive validation
+      const { data: isValid } = await supabase.rpc('validate_url_comprehensive', { url_input: content });
       
       if (!isValid) {
         return new Response(
