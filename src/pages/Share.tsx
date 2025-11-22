@@ -90,6 +90,19 @@ const Share = () => {
       return;
     }
 
+    // Validate expiry time
+    if (expiryMinutes < 10) {
+      toast.error("Expiry must be at least 10 minutes");
+      setExpiryMinutes(10);
+      return;
+    }
+
+    if (expiryMinutes > 2880) {
+      toast.error("Expiry cannot exceed 2 days (2880 minutes)");
+      setExpiryMinutes(2880);
+      return;
+    }
+
     if (type === 'url' && !url) {
       toast.error("Please enter a URL");
       return;
@@ -148,7 +161,30 @@ const Share = () => {
       setCustomSlug("");
     } catch (error: any) {
       console.error('Error creating share:', error);
-      toast.error(error.message || "Failed to create share link");
+      
+      // Parse error message from backend
+      let errorMessage = "Failed to create share link";
+      
+      if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      // Extract error from FunctionsHttpError response
+      if (error?.context?.body) {
+        try {
+          const errorBody = typeof error.context.body === 'string' 
+            ? JSON.parse(error.context.body)
+            : error.context.body;
+          
+          if (errorBody?.error) {
+            errorMessage = errorBody.error;
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -253,17 +289,58 @@ const Share = () => {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
                     <Label htmlFor="expiry">Expiry Time (minutes)</Label>
-                    <Input
-                      id="expiry"
-                      type="number"
-                      min="10"
-                      max="2880"
-                      value={expiryMinutes}
-                      onChange={(e) => setExpiryMinutes(Number(e.target.value))}
-                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setExpiryMinutes(60)}
+                        className="text-xs px-2 py-1 rounded bg-muted hover:bg-primary/20 transition-colors"
+                      >
+                        1hr
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExpiryMinutes(1440)}
+                        className="text-xs px-2 py-1 rounded bg-muted hover:bg-primary/20 transition-colors"
+                      >
+                        24hr
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExpiryMinutes(2880)}
+                        className="text-xs px-2 py-1 rounded bg-muted hover:bg-primary/20 transition-colors"
+                      >
+                        2d
+                      </button>
+                    </div>
                   </div>
+                  <Input
+                    id="expiry"
+                    type="number"
+                    min="10"
+                    max="2880"
+                    value={expiryMinutes}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      if (value >= 10 && value <= 2880) {
+                        setExpiryMinutes(value);
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const value = Number(e.target.value);
+                      if (value < 10) {
+                        setExpiryMinutes(10);
+                        toast.error("Minimum expiry is 10 minutes");
+                      } else if (value > 2880) {
+                        setExpiryMinutes(2880);
+                        toast.error("Maximum expiry is 2 days (2880 minutes)");
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Min: 10 mins, Max: 2 days (2880 mins)</p>
+                </div>
                   <div>
                     <Label htmlFor="max-access">Max Access Count (optional)</Label>
                     <Input
@@ -333,17 +410,58 @@ const Share = () => {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
                     <Label htmlFor="file-expiry">Expiry Time (minutes)</Label>
-                    <Input
-                      id="file-expiry"
-                      type="number"
-                      min="10"
-                      max="2880"
-                      value={expiryMinutes}
-                      onChange={(e) => setExpiryMinutes(Number(e.target.value))}
-                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setExpiryMinutes(60)}
+                        className="text-xs px-2 py-1 rounded bg-muted hover:bg-primary/20 transition-colors"
+                      >
+                        1hr
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExpiryMinutes(1440)}
+                        className="text-xs px-2 py-1 rounded bg-muted hover:bg-primary/20 transition-colors"
+                      >
+                        24hr
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExpiryMinutes(2880)}
+                        className="text-xs px-2 py-1 rounded bg-muted hover:bg-primary/20 transition-colors"
+                      >
+                        2d
+                      </button>
+                    </div>
                   </div>
+                  <Input
+                    id="file-expiry"
+                    type="number"
+                    min="10"
+                    max="2880"
+                    value={expiryMinutes}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      if (value >= 10 && value <= 2880) {
+                        setExpiryMinutes(value);
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const value = Number(e.target.value);
+                      if (value < 10) {
+                        setExpiryMinutes(10);
+                        toast.error("Minimum expiry is 10 minutes");
+                      } else if (value > 2880) {
+                        setExpiryMinutes(2880);
+                        toast.error("Maximum expiry is 2 days (2880 minutes)");
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Min: 10 mins, Max: 2 days (2880 mins)</p>
+                </div>
                   <div>
                     <Label htmlFor="file-max-access">Max Access Count (optional)</Label>
                     <Input
