@@ -14,6 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_logs: {
+        Row: {
+          created_at: string
+          event_category: string
+          event_type: string
+          id: string
+          ip_address: string | null
+          metadata: Json | null
+          severity: string
+          share_id: string | null
+          urn_id: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_category: string
+          event_type: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          severity: string
+          share_id?: string | null
+          urn_id?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_category?: string
+          event_type?: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          severity?: string
+          share_id?: string | null
+          urn_id?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_share_id_fkey"
+            columns: ["share_id"]
+            isOneToOne: false
+            referencedRelation: "shared_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_logs_urn_id_fkey"
+            columns: ["urn_id"]
+            isOneToOne: false
+            referencedRelation: "urns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -171,7 +225,22 @@ export type Database = {
       }
       cleanup_expired_share_files: { Args: never; Returns: undefined }
       cleanup_expired_shares: { Args: never; Returns: undefined }
+      cleanup_old_audit_logs: { Args: never; Returns: undefined }
       cleanup_rate_limits: { Args: never; Returns: undefined }
+      get_security_metrics: { Args: never; Returns: Json }
+      log_security_event: {
+        Args: {
+          p_event_category: string
+          p_event_type: string
+          p_ip_address?: string
+          p_metadata?: Json
+          p_severity: string
+          p_share_id?: string
+          p_urn_id?: string
+          p_user_agent?: string
+        }
+        Returns: string
+      }
       update_urn_last_seen: { Args: { urn_value: string }; Returns: undefined }
       validate_url: { Args: { url_input: string }; Returns: boolean }
     }
