@@ -71,7 +71,6 @@ async function deriveAesKey(password: string, salt: ArrayBuffer): Promise<Crypto
 }
 
 interface CreateShareRequest {
-  urn: string;
   content?: string;
   file?: {
     data: string;
@@ -96,8 +95,26 @@ serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    // Get authenticated user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid authentication' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const {
-      urn,
       content,
       file,
       password,
@@ -107,8 +124,8 @@ serve(async (req: Request) => {
       title,
     }: CreateShareRequest = await req.json();
 
-    // Database-based rate limiting: 20 shares per hour per URN
-    const rateLimitKey = `create_share:${urn}`;
+    // Database-based rate limiting: 20 shares per hour per user
+    const rateLimitKey = `create_share:${user.id}`;
     const { data: rateLimitAllowed, error: rateLimitError } = await supabase.rpc(
       'check_rate_limit',
       { 
@@ -119,7 +136,7 @@ serve(async (req: Request) => {
     );
 
     if (rateLimitError || rateLimitAllowed === false) {
-      console.log('Rate limit exceeded for URN:', urn);
+      console.log('Rate limit exceeded for user:', user.id);
       
       // Log rate limit event
       await supabase.rpc('log_security_event', {
@@ -127,7 +144,7 @@ serve(async (req: Request) => {
         p_event_category: 'access_control',
         p_severity: 'warning',
         p_ip_address: req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown',
-        p_metadata: { urn, endpoint: 'create-share' }
+        p_metadata: { user_id: user.id, endpoint: 'create-share' }
       });
       
       return new Response(
@@ -148,23 +165,6 @@ serve(async (req: Request) => {
       }
     }
 
-    // Validate URN exists
-    const { data: urnData, error: urnError } = await supabase
-      .from('urns')
-      .select('id')
-      .eq('urn', urn)
-      .single();
-
-    if (urnError || !urnData) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid URN' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Update URN last seen
-    await supabase.rpc('update_urn_last_seen', { urn_value: urn });
-
     // Validate expiry time
     if (expiryMinutes < 10 || expiryMinutes > 2880) {
       return new Response(
@@ -181,7 +181,7 @@ serve(async (req: Request) => {
       );
     }
 
-    // Hash password using bcrypt (Argon2id-level security)
+    // Hash password using bcrypt
     const passwordHash = await bcrypt.hash(password);
 
     // Generate share token
@@ -191,7 +191,7 @@ serve(async (req: Request) => {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
-    // Derive AES-256-GCM key from password using PBKDF2 (no key stored in DB)
+    // Derive AES-256-GCM key from password using PBKDF2
     const saltBytes = crypto.getRandomValues(new Uint8Array(16));
     const aesKey = await deriveAesKey(password, saltBytes.buffer);
 
@@ -216,7 +216,7 @@ serve(async (req: Request) => {
 
       originalUrl = content;
       
-      // Compress then encrypt URL content (40-70% space savings)
+      // Compress then encrypt URL content
       const contentBytes = encoder.encode(content);
       const compressedBytes = await compressData(contentBytes);
       const compressionRatio = Math.round((1 - compressedBytes.length / contentBytes.length) * 100);
@@ -234,7 +234,7 @@ serve(async (req: Request) => {
       try {
         const fileData = fromBase64(file.data);
         
-        // Compress file data (40-70% space savings for text/documents)
+        // Compress file data
         const compressedData = await compressData(fileData);
         const compressionRatio = Math.round((1 - compressedData.length / fileData.length) * 100);
         console.log(`File compression: ${compressionRatio}% smaller (${fileData.length} → ${compressedData.length} bytes)`);
@@ -290,7 +290,7 @@ serve(async (req: Request) => {
     const { data: shareData, error: shareError } = await supabase
       .from('shared_pages')
       .insert({
-        urn_id: urnData.id,
+        user_id: user.id,
         share_token: shareToken,
         custom_slug: customSlug || null,
         title,
@@ -326,8 +326,8 @@ serve(async (req: Request) => {
       p_event_category: 'content_management',
       p_severity: 'info',
       p_share_id: shareData.id,
-      p_urn_id: urnData.id,
       p_metadata: {
+        user_id: user.id,
         has_file: !!filePath,
         content_type: contentType,
         expiry_minutes: expiryMinutes,
