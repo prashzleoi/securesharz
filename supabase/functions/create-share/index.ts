@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -141,11 +142,8 @@ serve(async (req: Request) => {
       );
     }
 
-    // Hash password for verification (SHA-256 for quick check)
-    const passwordData = encoder.encode(password);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', passwordData);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    // Hash password using bcrypt (Argon2id-level security)
+    const passwordHash = await bcrypt.hash(password);
 
     // Generate share token
     const tokenBytes = new Uint8Array(32);
