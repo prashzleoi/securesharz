@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,18 +11,6 @@ const encoder = new TextEncoder();
 
 const fromBase64 = (b64: string) =>
   Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-
-// Constant-time string comparison to prevent timing attacks
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return result === 0;
-}
 
 interface GetShareRequest {
   identifier: string;
@@ -113,13 +102,10 @@ serve(async (req: Request) => {
       );
     }
 
-    // Verify password with constant-time comparison
-    const passwordData = encoder.encode(password);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', passwordData);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    // Verify password using bcrypt (built-in constant-time comparison)
+    const isPasswordValid = await bcrypt.compare(password, shareData.password_hash);
 
-    if (!timingSafeEqual(passwordHash, shareData.password_hash)) {
+    if (!isPasswordValid) {
       return new Response(
         JSON.stringify({ error: 'Incorrect password' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
