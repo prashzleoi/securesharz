@@ -73,6 +73,9 @@ export type Database = {
           created_at: string
           email: string | null
           id: string
+          two_factor_backup_codes: string[] | null
+          two_factor_enabled: boolean | null
+          two_factor_secret: string | null
           updated_at: string
           user_id: string
         }
@@ -80,6 +83,9 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          two_factor_backup_codes?: string[] | null
+          two_factor_enabled?: boolean | null
+          two_factor_secret?: string | null
           updated_at?: string
           user_id: string
         }
@@ -87,6 +93,9 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          two_factor_backup_codes?: string[] | null
+          two_factor_enabled?: boolean | null
+          two_factor_secret?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -187,6 +196,27 @@ export type Database = {
           },
         ]
       }
+      two_factor_attempts: {
+        Row: {
+          created_at: string
+          id: string
+          success: boolean
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          success?: boolean
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          success?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
       urns: {
         Row: {
           created_at: string
@@ -219,6 +249,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_2fa_rate_limit: { Args: { p_user_id: string }; Returns: boolean }
       check_rate_limit: {
         Args: { max_attempts: number; rate_key: string; window_minutes: number }
         Returns: boolean
@@ -243,6 +274,10 @@ export type Database = {
       }
       update_urn_last_seen: { Args: { urn_value: string }; Returns: undefined }
       validate_url: { Args: { url_input: string }; Returns: boolean }
+      validate_url_comprehensive: {
+        Args: { url_input: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
