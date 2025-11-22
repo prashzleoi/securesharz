@@ -161,9 +161,9 @@ const Share = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
+      <header className="border-b border-border backdrop-blur-sm bg-background/80 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
+          <h1 className="text-2xl font-display font-bold cursor-pointer hover:text-primary transition-colors" onClick={() => navigate('/')}>
             SecureSharz
           </h1>
           <Button variant="outline" onClick={() => navigate('/history')}>
@@ -172,23 +172,27 @@ const Share = () => {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 max-w-4xl">
-        <div className="mb-8 text-center">
-          <h2 className="text-3xl font-bold mb-2">Share Securely & Anonymously</h2>
-          <p className="text-muted-foreground">
+      <main className="container mx-auto px-4 py-12 max-w-4xl">
+        <div className="mb-12 text-center space-y-4">
+          <h2 className="text-4xl md:text-5xl font-display font-bold bg-gradient-to-r from-primary via-primary-glow to-accent bg-clip-text text-transparent">
+            Share Securely & Anonymously
+          </h2>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Upload files or share links with end-to-end encryption. No login required.
           </p>
         </div>
 
         {shareLink ? (
-          <Card className="p-6 bg-secondary/10">
-            <div className="flex items-center gap-2 mb-4">
-              <Shield className="w-5 h-5 text-primary" />
-              <h3 className="text-lg font-semibold">Your secure share link is ready!</h3>
+          <Card className="p-8 bg-gradient-to-br from-card to-muted border-primary/20 shadow-glow">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Shield className="w-6 h-6 text-primary" />
+              </div>
+              <h3 className="text-xl font-display font-semibold">Your secure share link is ready!</h3>
             </div>
-            <div className="flex gap-2">
-              <Input value={shareLink} readOnly className="flex-1" />
-              <Button onClick={copyLink}>
+            <div className="flex gap-2 mb-4">
+              <Input value={shareLink} readOnly className="flex-1 font-mono text-sm" />
+              <Button onClick={copyLink} variant="hero">
                 <Copy className="w-4 h-4 mr-2" />
                 Copy
               </Button>
@@ -202,14 +206,14 @@ const Share = () => {
             </Button>
           </Card>
         ) : (
-          <Card className="p-6">
+          <Card className="p-8 bg-gradient-to-br from-card to-muted border-primary/20 shadow-card">
             <Tabs defaultValue="url">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="url">
+              <TabsList className="grid w-full grid-cols-2 mb-6">
+                <TabsTrigger value="url" className="font-medium">
                   <Link className="w-4 h-4 mr-2" />
                   Share URL
                 </TabsTrigger>
-                <TabsTrigger value="file">
+                <TabsTrigger value="file" className="font-medium">
                   <Upload className="w-4 h-4 mr-2" />
                   Upload File
                 </TabsTrigger>
@@ -375,24 +379,30 @@ const Share = () => {
           </Card>
         )}
 
-        <div className="mt-8 grid md:grid-cols-3 gap-4">
-          <Card className="p-4 text-center">
-            <Shield className="w-8 h-8 mx-auto mb-2 text-primary" />
-            <h3 className="font-semibold mb-1">End-to-End Encrypted</h3>
+        <div className="mt-12 grid md:grid-cols-3 gap-6">
+          <Card className="p-6 text-center bg-gradient-to-br from-card to-muted border-primary/10 hover:border-primary/30 transition-all hover:shadow-soft">
+            <div className="w-12 h-12 mx-auto mb-4 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Shield className="w-6 h-6 text-primary" />
+            </div>
+            <h3 className="font-display font-semibold mb-2">End-to-End Encrypted</h3>
             <p className="text-sm text-muted-foreground">
               Your content is encrypted before leaving your device
             </p>
           </Card>
-          <Card className="p-4 text-center">
-            <Clock className="w-8 h-8 mx-auto mb-2 text-primary" />
-            <h3 className="font-semibold mb-1">Auto-Expiring</h3>
+          <Card className="p-6 text-center bg-gradient-to-br from-card to-muted border-accent/10 hover:border-accent/30 transition-all hover:shadow-soft">
+            <div className="w-12 h-12 mx-auto mb-4 rounded-lg bg-accent/10 flex items-center justify-center">
+              <Clock className="w-6 h-6 text-accent" />
+            </div>
+            <h3 className="font-display font-semibold mb-2">Auto-Expiring</h3>
             <p className="text-sm text-muted-foreground">
               Links expire automatically after set time
             </p>
           </Card>
-          <Card className="p-4 text-center">
-            <Link className="w-8 h-8 mx-auto mb-2 text-primary" />
-            <h3 className="font-semibold mb-1">No Login Required</h3>
+          <Card className="p-6 text-center bg-gradient-to-br from-card to-muted border-primary/10 hover:border-primary/30 transition-all hover:shadow-soft">
+            <div className="w-12 h-12 mx-auto mb-4 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Link className="w-6 h-6 text-primary" />
+            </div>
+            <h3 className="font-display font-semibold mb-2">No Login Required</h3>
             <p className="text-sm text-muted-foreground">
               Share securely without creating an account
             </p>

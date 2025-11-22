@@ -17,9 +17,9 @@ const Hero = () => {
               <span>Zero-knowledge encryption</span>
             </div>
             
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight">
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-display font-bold tracking-tight">
               Share files & links —{" "}
-              <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-primary via-primary-glow to-accent bg-clip-text text-transparent">
                 privately, securely, anonymously.
               </span>
             </h1>
