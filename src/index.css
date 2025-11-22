@@ -8,97 +8,58 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* SecureShare Design System - HSL Colors Only */
-    --background: 225 100% 99%;
-    --foreground: 222 47% 11%;
+    /* Dark Minimalist Design System - HSL Colors Only */
+    --background: 222 47% 8%;
+    --foreground: 210 40% 98%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
 
-    /* Primary - Warm Indigo */
-    --primary: 243 75% 59%;
+    /* Primary - Electric Purple */
+    --primary: 270 80% 65%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 248 73% 70%;
+    --primary-glow: 270 80% 75%;
 
-    /* Accent - Coral */
-    --accent: 0 100% 71%;
-    --accent-foreground: 0 0% 100%;
+    /* Accent - Cyan */
+    --accent: 180 100% 60%;
+    --accent-foreground: 222 47% 8%;
 
-    /* Secondary/CTA - Mint */
-    --secondary: 165 95% 43%;
-    --secondary-foreground: 0 0% 100%;
+    /* Secondary - Purple Muted */
+    --secondary: 270 50% 25%;
+    --secondary-foreground: 210 40% 98%;
 
     /* Muted */
-    --muted: 215 25% 97%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 222 47% 15%;
+    --muted-foreground: 217 20% 60%;
 
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 243 75% 59%;
+    --border: 222 47% 18%;
+    --input: 222 47% 15%;
+    --ring: 270 80% 65%;
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;
 
     /* Custom Design Tokens */
-    --gradient-hero: linear-gradient(90deg, hsl(243 75% 59%), hsl(248 73% 70%));
-    --gradient-bg: linear-gradient(180deg, hsl(225 100% 99%), hsl(0 0% 100%));
-    --shadow-soft: 0 8px 24px hsl(243 75% 59% / 0.12);
-    --shadow-card: 0 2px 8px hsl(222 47% 11% / 0.04);
+    --gradient-hero: linear-gradient(135deg, hsl(270 80% 65%), hsl(180 100% 60%));
+    --gradient-card: linear-gradient(145deg, hsl(222 47% 11%), hsl(222 47% 13%));
+    --shadow-soft: 0 8px 32px hsl(270 80% 65% / 0.15);
+    --shadow-glow: 0 0 40px hsl(270 80% 65% / 0.3);
+    --shadow-card: 0 4px 24px hsl(222 47% 5% / 0.5);
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 243 75% 59%;
-  }
-
-  .dark {
-    --background: 222 47% 11%;
-    --foreground: 225 100% 99%;
-
-    --card: 222 47% 14%;
-    --card-foreground: 225 100% 99%;
-
-    --popover: 222 47% 14%;
-    --popover-foreground: 225 100% 99%;
-
-    --primary: 243 75% 59%;
-    --primary-foreground: 0 0% 100%;
-    --primary-glow: 248 73% 70%;
-
-    --accent: 0 100% 71%;
-    --accent-foreground: 0 0% 100%;
-
-    --secondary: 165 95% 43%;
-    --secondary-foreground: 0 0% 100%;
-
-    --muted: 217 33% 18%;
-    --muted-foreground: 215 16% 65%;
-
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 0 0% 100%;
-
-    --border: 217 33% 18%;
-    --input: 217 33% 18%;
-    --ring: 243 75% 59%;
-
-    --sidebar-background: 240 6% 10%;
-    --sidebar-foreground: 240 5% 96%;
-    --sidebar-primary: 243 75% 59%;
+    --sidebar-background: 222 47% 8%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 270 80% 65%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 4% 16%;
-    --sidebar-accent-foreground: 240 5% 96%;
-    --sidebar-border: 240 4% 16%;
-    --sidebar-ring: 243 75% 59%;
+    --sidebar-accent: 222 47% 15%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 222 47% 18%;
+    --sidebar-ring: 270 80% 65%;
   }
 }
 
@@ -110,11 +71,27 @@ All colors MUST be HSL.
   body {
     @apply bg-background text-foreground;
     font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    line-height: 1.5;
+    line-height: 1.6;
+    letter-spacing: -0.011em;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-weight: 700;
+    font-family: "Space Grotesk", "Inter", system-ui, sans-serif;
+    font-weight: 600;
     line-height: 1.2;
+    letter-spacing: -0.02em;
+  }
+
+  h1 {
+    font-size: 3.5rem;
+    font-weight: 700;
+  }
+
+  h2 {
+    font-size: 2.5rem;
+  }
+
+  h3 {
+    font-size: 1.875rem;
   }
 }
