@@ -6,12 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Link, Upload, Clock, Shield, Copy } from "lucide-react";
+import { Link, Upload, Copy, Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import Header from "@/components/Header";
 
 const Share = () => {
   const navigate = useNavigate();
-  const [urn, setUrn] = useState<string>("");
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [shareLink, setShareLink] = useState<string>("");
   
@@ -25,38 +26,27 @@ const Share = () => {
   const [maxAccess, setMaxAccess] = useState<number | undefined>();
 
   useEffect(() => {
-    initializeUrn();
-  }, []);
+    // Check authentication
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        navigate("/auth");
+      } else {
+        setUser(session.user);
+      }
+    });
 
-  const initializeUrn = async () => {
-    // Check if URN exists in cookie
-    const cookies = document.cookie.split(';');
-    const urnCookie = cookies.find(c => c.trim().startsWith('urn='));
-    
-    if (urnCookie) {
-      const urnValue = urnCookie.split('=')[1];
-      setUrn(urnValue);
-    } else {
-      // Generate new URN
-      await generateUrn();
-    }
-  };
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT") {
+        navigate("/auth");
+      } else if (session) {
+        setUser(session.user);
+      }
+    });
 
-  const generateUrn = async () => {
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-urn', {
-        body: {},
-      });
-
-      if (error) throw error;
-
-      setUrn(data.urn);
-      toast.success("Secure identity created");
-    } catch (error) {
-      console.error('Error generating URN:', error);
-      toast.error("Failed to create secure identity");
-    }
-  };
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -75,8 +65,9 @@ const Share = () => {
   };
 
   const handleShare = async (type: 'url' | 'file') => {
-    if (!urn) {
-      toast.error("Secure identity not initialized");
+    if (!user) {
+      toast.error("Please sign in to create shares");
+      navigate("/auth");
       return;
     }
 
@@ -117,7 +108,6 @@ const Share = () => {
 
     try {
       let requestBody: any = {
-        urn,
         password,
         title,
         expiryMinutes,
@@ -144,8 +134,14 @@ const Share = () => {
         };
       }
 
+      const session = await supabase.auth.getSession();
+      const accessToken = session.data.session?.access_token;
+
       const { data, error } = await supabase.functions.invoke('create-share', {
         body: requestBody,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
       });
 
       if (error) throw error;
@@ -195,26 +191,21 @@ const Share = () => {
     toast.success("Link copied to clipboard!");
   };
 
+  if (!user) {
+    return null; // Will redirect in useEffect
+  }
+
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border backdrop-blur-sm bg-background/80 sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-display font-bold cursor-pointer hover:text-primary transition-colors" onClick={() => navigate('/')}>
-            SecureSharz
-          </h1>
-          <Button variant="outline" onClick={() => navigate('/history')}>
-            View History
-          </Button>
-        </div>
-      </header>
+      <Header />
 
-      <main className="container mx-auto px-4 py-12 max-w-4xl">
+      <main className="container mx-auto px-4 py-12 max-w-4xl mt-16">
         <div className="mb-12 text-center space-y-4">
           <h2 className="text-4xl md:text-5xl font-display font-bold bg-gradient-to-r from-primary via-primary-glow to-accent bg-clip-text text-transparent">
-            Share Securely & Anonymously
+            Share Securely
           </h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Upload files or share links with end-to-end encryption. No login required.
+            Upload files or share links with end-to-end AES-256-GCM encryption
           </p>
         </div>
 
@@ -228,7 +219,7 @@ const Share = () => {
             </div>
             <div className="flex gap-2 mb-4">
               <Input value={shareLink} readOnly className="flex-1 font-mono text-sm" />
-              <Button onClick={copyLink} variant="hero">
+              <Button onClick={copyLink} variant="default">
                 <Copy className="w-4 h-4 mr-2" />
                 Copy
               </Button>
@@ -490,42 +481,12 @@ const Share = () => {
                   disabled={loading}
                   className="w-full"
                 >
-                  {loading ? "Uploading..." : "Upload & Create Share Link"}
+                  {loading ? "Creating..." : "Create Secure Share Link"}
                 </Button>
               </TabsContent>
             </Tabs>
           </Card>
         )}
-
-        <div className="mt-12 grid md:grid-cols-3 gap-6">
-          <Card className="p-6 text-center bg-gradient-to-br from-card to-muted border-primary/10 hover:border-primary/30 transition-all hover:shadow-soft">
-            <div className="w-12 h-12 mx-auto mb-4 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Shield className="w-6 h-6 text-primary" />
-            </div>
-            <h3 className="font-display font-semibold mb-2">End-to-End Encrypted</h3>
-            <p className="text-sm text-muted-foreground">
-              Your content is encrypted before leaving your device
-            </p>
-          </Card>
-          <Card className="p-6 text-center bg-gradient-to-br from-card to-muted border-accent/10 hover:border-accent/30 transition-all hover:shadow-soft">
-            <div className="w-12 h-12 mx-auto mb-4 rounded-lg bg-accent/10 flex items-center justify-center">
-              <Clock className="w-6 h-6 text-accent" />
-            </div>
-            <h3 className="font-display font-semibold mb-2">Auto-Expiring</h3>
-            <p className="text-sm text-muted-foreground">
-              Links expire automatically after set time
-            </p>
-          </Card>
-          <Card className="p-6 text-center bg-gradient-to-br from-card to-muted border-primary/10 hover:border-primary/30 transition-all hover:shadow-soft">
-            <div className="w-12 h-12 mx-auto mb-4 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Link className="w-6 h-6 text-primary" />
-            </div>
-            <h3 className="font-display font-semibold mb-2">No Login Required</h3>
-            <p className="text-sm text-muted-foreground">
-              Share securely without creating an account
-            </p>
-          </Card>
-        </div>
       </main>
     </div>
   );
